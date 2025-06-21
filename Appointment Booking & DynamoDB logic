@@ -1,0 +1,118 @@
+import json
+import boto3
+from datetime import datetime
+
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table('AppointmentBookings')
+
+def lambda_handler(event, context):
+    intent_name = event['sessionState']['intent']['name']
+    slots = event['sessionState']['intent']['slots']
+
+    if intent_name == 'CheckAppointmentAvailabilityIntent':
+        department = slots['Department']['value']['interpretedValue']
+        date = slots['Date']['value']['interpretedValue']
+        time = slots.get('Time', {}).get('value', {}).get('interpretedValue', None)
+
+        if date == "2025-06-25":
+            available_slots = []
+        else:
+            available_slots = ["10:00 AM", "11:00 AM", "2:00 PM", "6:00 PM"]
+
+        # Query DynamoDB for booked times
+        response = table.scan(
+            FilterExpression='AppointmentDate = :date AND Department = :dept',
+            ExpressionAttributeValues={
+                ':date': date,
+                ':dept': department
+            }
+        )
+        booked_times = [item['AppointmentTime'] for item in response['Items']]
+        remaining_slots = [t for t in available_slots if t not in booked_times]
+
+        if not remaining_slots:
+            message = f"Sorry, no available appointments in {department} on {date}."
+        else:
+            message = f"Available appointments for {department} on {date}: {', '.join(remaining_slots)}."
+
+        return {
+            "sessionState": {
+                "dialogAction": {
+                    "type": "ElicitIntent"
+                },
+                "intent": {
+                    "name": intent_name,
+                    "state": "Fulfilled"
+                }
+            },
+            "messages": [
+                {
+                    "contentType": "PlainText",
+                    "content": message + " Would you like to book one of these slots?"
+                }
+            ]
+        }
+
+    elif intent_name == 'BookAppointmentIntent':
+        department = slots['Department']['value']['interpretedValue']
+        date = slots['Date']['value']['interpretedValue']
+        time = slots['Time']['value']['interpretedValue']
+        user_name = slots.get('UserName', {}).get('value', {}).get('interpretedValue', 'Anonymous')
+        phone_number = slots.get('PhoneNumber', {}).get('value', {}).get('interpretedValue', 'N/A')
+
+        appointment_id = f"{date}_{time}_{department}"
+
+        # Check if already booked
+        response = table.get_item(Key={'AppointmentID': appointment_id})
+        if 'Item' in response:
+            message = f"Sorry, {time} on {date} for {department} is already booked. Please try another time."
+        else:
+            table.put_item(
+                Item={
+                    'AppointmentID': appointment_id,
+                    'AppointmentDate': date,
+                    'AppointmentTime': time,
+                    'Department': department,
+                    'UserName': user_name,
+                    'PhoneNumber': phone_number,
+                    'CreatedAt': datetime.utcnow().isoformat()
+                }
+            )
+            message = f"Thank you {user_name}, your appointment for {department} on {date} at {time} has been booked!"
+
+        return {
+            "sessionState": {
+                "dialogAction": {
+                    "type": "Close"
+                },
+                "intent": {
+                    "name": intent_name,
+                    "state": "Fulfilled"
+                }
+            },
+            "messages": [
+                {
+                    "contentType": "PlainText",
+                    "content": message
+                }
+            ]
+        }
+
+    else:
+        return {
+            "sessionState": {
+                "dialogAction": {
+                    "type": "Close"
+                },
+                "intent": {
+                    "name": intent_name,
+                    "state": "Fulfilled"
+                }
+            },
+            "messages": [
+                {
+                    "contentType": "PlainText",
+                    "content": "Sorry, I didn't understand that request."
+                }
+            ]
+        }
