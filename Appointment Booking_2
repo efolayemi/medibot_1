@@ -1,0 +1,63 @@
+import json
+from datetime import datetime
+
+def lambda_handler(event, context):
+    intent_name = event['sessionState']['intent']['name']
+
+    if intent_name == 'DirectBookingIntent':
+        slots = event['sessionState']['intent']['slots']
+        firstname = slots['FirstName']['value']['interpretedvalue']
+        lastname = slots['LastName']['value']['interpretedvalue']
+        time = slots.get('Time', {}).get('value', {}).get('interpretedValue', None)
+        patientid = slots['PatientID']['value']['interpretedvalue']
+        department = slots['Department']['value']['interpretedValue']
+        dateofbirth = slots['DateOfBirth']['value']['interpretedValue']
+        
+
+        formatted_time = None
+        if time:
+            try:
+                dt_time = datetime.strptime(time, "%H:%M")
+                formatted_time = dt_time.strftime("%I:%M %p").lstrip("0")
+            except ValueError:
+                formatted_time = None
+
+        if date == "2025-06-25":
+            available_slots = []
+        else:
+            available_slots = ["10:00 AM", "11:00 AM", "2:00 PM", "6:00 PM"]
+
+        if not available_slots:
+            message = f"Sorry, there are no available appointments in {department} on {date}. Please choose another date."
+            dialog_action_type = "Close"
+        elif formatted_time and formatted_time not in available_slots:
+            message = (f"Sorry, there is no appointment available at {formatted_time} in {department} on {date}. "
+                       f"Available times are: {', '.join(available_slots)}. Please select from one of these time slots")
+            dialog_action_type = "Close"
+        else:
+            message = (f"Yes, we have appointments available in {department} on {date} at {', '.join(available_slots)}. "
+                       "Would you like to book this appointment?")
+            dialog_action_type = "ElicitIntent"  # Ask what the user wants to do next
+
+        return {
+            "sessionState": {
+                "dialogAction": {
+                    "type": dialog_action_type
+                },
+                "intent": {
+                    "name": intent_name,
+                    "state": "Fulfilled"
+                },
+                "sessionAttributes": {
+                    "Department": department,
+                    "Date": date,
+                    "Time": formatted_time or ""
+                }
+            },
+            "messages": [
+                {
+                    "contentType": "PlainText",
+                    "content": message
+                }
+            ]
+        }
