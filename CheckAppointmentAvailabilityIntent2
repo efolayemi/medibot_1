@@ -1,0 +1,100 @@
+import json
+from datetime import datetime
+
+def lambda_handler(event, context):
+    intent_name = event['sessionState']['intent']['name']
+
+    if intent_name == 'CheckAppointmentAvailabilityIntent':
+        slots = event['sessionState']['intent']['slots']
+        department = slots['Department']['value']['interpretedValue']
+        date = slots['Date']['value']['interpretedValue']
+        time = slots.get('Time', {}).get('value', {}).get('interpretedValue', None)
+
+        formatted_time = None
+        if time:
+            try:
+                dt_time = datetime.strptime(time, "%H:%M")
+                formatted_time = dt_time.strftime("%I:%M %p").lstrip("0")
+            except ValueError:
+                formatted_time = None
+
+        # Sample logic for availability
+        if date == "2025-06-25":
+            available_slots = []
+        else:
+            available_slots = ["10:00 AM", "11:00 AM", "2:00 PM", "6:00 PM"]
+
+        # Handle no available slots
+        if not available_slots:
+            message = f"Sorry, there are no available appointments in {department} on {date}. Please choose another date."
+            return {
+                "sessionState": {
+                    "dialogAction": {
+                        "type": "ElicitSlot",
+                        "slotToElicit": "Date"
+                    },
+                    "intent": {
+                        "name": intent_name,
+                        "slots": slots,
+                        "state": "InProgress"
+                    }
+                },
+                "messages": [
+                    {
+                        "contentType": "PlainText",
+                        "content": message
+                    }
+                ]
+            }
+
+        # Handle invalid time input
+        elif formatted_time and formatted_time not in available_slots:
+            message = (f"Sorry, there is no appointment available at {formatted_time} in {department} on {date}. "
+                       f"Available times are: {', '.join(available_slots)}. Please select from one of these time slots.")
+            return {
+                "sessionState": {
+                    "dialogAction": {
+                        "type": "ElicitSlot",
+                        "slotToElicit": "Time"
+                    },
+                    "intent": {
+                        "name": intent_name,
+                        "slots": slots,
+                        "state": "InProgress"
+                    }
+                },
+                "messages": [
+                    {
+                        "contentType": "PlainText",
+                        "content": message
+                    }
+                ]
+            }
+
+        # Valid input: proceed to confirmation
+        else:
+            message = (f"Yes, we have appointments available in {department} on {date} at {formatted_time}. "
+                       "Would you like to book this appointment?")
+            return {
+                "sessionState": {
+                    "dialogAction": {
+                        "type": "ElicitIntent"
+                    },
+                    "intent": {
+                        "name": intent_name,
+                        "slots": slots,
+                        "state": "Fulfilled"
+                    },
+                    "sessionAttributes": {
+                        "Department": department,
+                        "Date": date,
+                        "Time": formatted_time or ""
+                    }
+                },
+                "messages": [
+                    {
+                        "contentType": "PlainText",
+                        "content": message
+                    }
+                ]
+            }
